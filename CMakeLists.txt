@@ -11,6 +11,7 @@ set(CXX_FLAGS "-Wall")
 set(CMAKE_CXX_FLAGS "${CXX_FLAGS}")
 
 set(sources
+	src/tools.cpp
 	src/MPC.cpp
 	src/main.cpp
 )

@@ -5,7 +5,7 @@ using CppAD::AD;
 
 
 // TODO: Set the timestep length and duration
-int N = 10;
+int N = 20;
 double dt = 0.1;
 
 // This value assumes the model presented in the classroom is used.
@@ -114,8 +114,8 @@ class FG_eval {
       AD<double> delta0 = vars[delta_start + t - 1];
       AD<double> a0 = vars[a_start + t - 1];
 
-      AD<double> f0 = coeffs[0] + coeffs[1] * x0;
-      AD<double> psides0 = CppAD::atan(coeffs[1]);
+      AD<double> f0 = coeffs[0] + coeffs[1]*x0 + coeffs[2]*x0*x0 + coeffs[3]*x0*x0*x0;
+      AD<double> psides0 = CppAD::atan(coeffs[1]*x0 + coeffs[2]*x0*x0 + coeffs[3]*x0*x0*x0);
 
       // Here's `x` to get you started.
       // The idea here is to constraint this value to be 0.
@@ -247,7 +247,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state,
   options += "Sparse  true        reverse\n";
   // NOTE: Currently the solver has a maximum time limit of 0.9 seconds.
   // Change this as you see fit.
-  options += "Numeric max_cpu_time          0.9\n";
+  options += "Numeric max_cpu_time   0.9\n";
 
   // place to return solution
   CppAD::ipopt::solve_result<Dvector> solution;

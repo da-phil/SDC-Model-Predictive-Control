@@ -8,65 +8,13 @@
 #include <Eigen/QR>
 #include "MPC.h"
 #include "json.hpp"
+#include "tools.hpp"
 
 // for convenience
 using json = nlohmann::json;
 
 int N_ref = 12; // number of reference points for reference trajectory
 double wp_delta = 6.0; // delta between waypoints in x direction
-
-// For converting back and forth between radians and degrees.
-constexpr double pi() { return M_PI; }
-double deg2rad(double x) { return x * pi() / 180; }
-double rad2deg(double x) { return x * 180 / pi(); }
-
-// Checks if the SocketIO event has JSON data.
-// If there is data the JSON object in string format will be returned,
-// else the empty string "" will be returned.
-string hasData(string s) {
-  auto found_null = s.find("null");
-  auto b1 = s.find_first_of("[");
-  auto b2 = s.rfind("}]");
-  if (found_null != string::npos) {
-    return "";
-  } else if (b1 != string::npos && b2 != string::npos) {
-    return s.substr(b1, b2 - b1 + 2);
-  }
-  return "";
-}
-
-// Evaluate a polynomial.
-double polyeval(Eigen::VectorXd coeffs, double x) {
-  double result = 0.0;
-  for (int i = 0; i < coeffs.size(); i++) {
-    result += coeffs[i] * pow(x, i);
-  }
-  return result;
-}
-
-// Fit a polynomial.
-// Adapted from
-// https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
-Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
-                        int order) {
-  assert(xvals.size() == yvals.size());
-  assert(order >= 1 && order <= xvals.size() - 1);
-  Eigen::MatrixXd A(xvals.size(), order + 1);
-
-  for (int i = 0; i < xvals.size(); i++) {
-    A(i, 0) = 1.0;
-  }
-
-  for (int j = 0; j < xvals.size(); j++) {
-    for (int i = 0; i < order; i++) {
-      A(j, i + 1) = A(j, i) * xvals(j);
-    }
-  }
-
-  auto Q = A.householderQr();
-  auto result = Q.solve(yvals);
-  return result;
-}
 
 
 
@@ -125,18 +73,14 @@ int main() {
           }
 
           // Transform waypoints from global coordinate system into the local car coordinate system
-          Eigen::VectorXd waypts_x_trans = Eigen::VectorXd::Zero(waypts_x.size());
-          Eigen::VectorXd waypts_y_trans = Eigen::VectorXd::Zero(waypts_y.size());
+          std::vector<double> waypts_x_trans;
+          std::vector<double> waypts_y_trans;
+          Tranform2d(waypts_x_trans, waypts_y_trans, waypts_x, waypts_y, px, py, -psi);
+          Eigen::Map<Eigen::VectorXd> wp_x(waypts_x_trans.data(), waypts_x_trans.size());
+          Eigen::Map<Eigen::VectorXd> wp_y(waypts_y_trans.data(), waypts_y_trans.size());
 
-          for (int idx = 0; idx < (int) waypts_x.size(); idx++) {
-            double dx = waypts_x[idx] - px;
-            double dy = waypts_y[idx] - py;
-            waypts_x_trans[idx] = dx*cos(-psi) - dy*sin(-psi);
-            waypts_y_trans[idx] = dx*sin(-psi) + dy*cos(-psi);
-          }
-
-          // TODO: fit a polynomial to the above x and y coordinates
-          auto coeffs = polyfit(waypts_x_trans, waypts_y_trans, 3);
+          // Fit a polynomial of order 3 to the above x and y coordinates
+          auto coeffs = polyfit(wp_x, wp_y, 3);
 
           //std::cout << "coeffs: " << coeffs << std::endl;
           for (int x = 0; x < (int) next_x_vals.size(); x++) {
@@ -172,12 +116,10 @@ int main() {
           }
 
           // Transforming calculated path into car coordinates
-          for (int idx = 0; idx < (int) mpc_x_vals.size(); idx++) {
-            double dx = mpc_x_vals[idx] - mpc_x_vals[0];
-            double dy = mpc_y_vals[idx] - mpc_y_vals[0];
-            mpc_x_vals[idx] = dx*cos(psi) - dy*sin(psi);
-            mpc_y_vals[idx] = dx*sin(psi) + dy*cos(psi);
-          }
+          std::vector<double> mpc_x_vals_trans;
+          std::vector<double> mpc_y_vals_trans;
+          Tranform2d(mpc_x_vals_trans, mpc_y_vals_trans, mpc_x_vals, mpc_y_vals,
+                     mpc_x_vals[0], mpc_y_vals[0], -psi);
 
           json msgJson;
 
@@ -186,8 +128,8 @@ int main() {
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
-          msgJson["mpc_x"] = mpc_x_vals;
-          msgJson["mpc_y"] = mpc_y_vals;
+          msgJson["mpc_x"] = mpc_x_vals_trans;
+          msgJson["mpc_y"] = mpc_y_vals_trans;
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
