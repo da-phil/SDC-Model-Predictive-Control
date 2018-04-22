@@ -5,7 +5,7 @@ using CppAD::AD;
 
 
 // TODO: Set the timestep length and duration
-int N = 20;
+int N = 10;
 double dt = 0.1;
 
 // This value assumes the model presented in the classroom is used.
@@ -21,7 +21,7 @@ double dt = 0.1;
 const double Lf = 2.67;
 
 // Reference velocity
-const double ref_v = 40;
+const double ref_v = 80;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -57,20 +57,21 @@ class FG_eval {
     // - penalize heading error (epsi)
     // - penalize deviation from reference velocity (ref_v)
     for (int t = 0; t < N; t++) {
-      fg[0] += CppAD::pow(vars[cte_start + t], 2);
-      fg[0] += CppAD::pow(vars[epsi_start + t], 2);
-      fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
+      fg[0] += 100 * CppAD::pow(vars[cte_start + t], 2);
+      fg[0] += 10  * CppAD::pow(vars[epsi_start + t], 2);
+      fg[0] += 1  * CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
 
     // Minimize the use of actuators.
     for (int t = 0; t < N - 1; t++) {
-      fg[0] += CppAD::pow(vars[delta_start + t], 2);
-      fg[0] += CppAD::pow(vars[a_start + t], 2);
+      fg[0] += 100  * CppAD::pow(vars[delta_start + t], 2);
+      fg[0] += 10   * CppAD::pow(vars[a_start + t], 2);
     }
+
 
     // Minimize the value gap between sequential actuations.
     for (int t = 0; t < N - 2; t++) {
-      fg[0] += steering_smoothness*CppAD::pow((vars[delta_start + t + 1] - vars[delta_start + t]), 2);
+      fg[0] += steering_smoothness * CppAD::pow((vars[delta_start + t + 1] - vars[delta_start + t]), 2);
       fg[0] += CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
 
@@ -114,8 +115,12 @@ class FG_eval {
       AD<double> delta0 = vars[delta_start + t - 1];
       AD<double> a0 = vars[a_start + t - 1];
 
-      AD<double> f0 = coeffs[0] + coeffs[1]*x0 + coeffs[2]*x0*x0 + coeffs[3]*x0*x0*x0;
-      AD<double> psides0 = CppAD::atan(coeffs[1]*x0 + coeffs[2]*x0*x0 + coeffs[3]*x0*x0*x0);
+      // Evaluate polynomial
+      AD<double> f0 = coeffs[0] + coeffs[1]*x0 +
+                      coeffs[2]*x0*x0 + coeffs[3]*x0*x0*x0;
+      AD<double> psides0 = CppAD::atan(    coeffs[1] +
+                                       2.0*coeffs[2]*x0 +
+                                       3.0*coeffs[3]*x0*x0);
 
       // Here's `x` to get you started.
       // The idea here is to constraint this value to be 0.
@@ -208,25 +213,18 @@ vector<double> MPC::Solve(Eigen::VectorXd state,
   // Lower and upper limits for constraints
   // All of these should be 0 except the initial
   // state indices.
-  Dvector constraints_lowerbound(n_constraints);
-  Dvector constraints_upperbound(n_constraints);
+  Dvector constr_lowerbound(n_constraints);
+  Dvector constr_upperbound(n_constraints);
   for (int i = 0; i < (int) n_constraints; i++) {
-    constraints_lowerbound[i] = 0;
-    constraints_upperbound[i] = 0;
+    constr_lowerbound[i] = 0;
+    constr_upperbound[i] = 0;
   }
-  constraints_lowerbound[x_start] = x;
-  constraints_lowerbound[y_start] = y;
-  constraints_lowerbound[psi_start] = psi;
-  constraints_lowerbound[v_start] = v;
-  constraints_lowerbound[cte_start] = cte;
-  constraints_lowerbound[epsi_start] = epsi;
-
-  constraints_upperbound[x_start] = x;
-  constraints_upperbound[y_start] = y;
-  constraints_upperbound[psi_start] = psi;
-  constraints_upperbound[v_start] = v;
-  constraints_upperbound[cte_start] = cte;
-  constraints_upperbound[epsi_start] = epsi;
+  constr_lowerbound[x_start]    = constr_upperbound[x_start] = x;
+  constr_lowerbound[y_start]    = constr_upperbound[y_start] = y;
+  constr_lowerbound[psi_start]  = constr_upperbound[psi_start] = psi;
+  constr_lowerbound[v_start]    = constr_upperbound[v_start] =v;
+  constr_lowerbound[cte_start]  = constr_upperbound[cte_start] = cte;
+  constr_lowerbound[epsi_start] = constr_upperbound[epsi_start] = epsi;
 
   // object that computes objective and constraints
   FG_eval fg_eval(coeffs, steering_smoothness);
@@ -254,8 +252,8 @@ vector<double> MPC::Solve(Eigen::VectorXd state,
 
   // solve the problem
   CppAD::ipopt::solve<Dvector, FG_eval>(
-      options, vars, vars_lowerbound, vars_upperbound, constraints_lowerbound,
-      constraints_upperbound, fg_eval, solution);
+      options, vars, vars_lowerbound, vars_upperbound, constr_lowerbound,
+      constr_upperbound, fg_eval, solution);
 
 
   // Check some of the solution values
