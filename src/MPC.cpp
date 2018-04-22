@@ -5,7 +5,7 @@ using CppAD::AD;
 
 
 // TODO: Set the timestep length and duration
-int N = 15;
+int N = 10;
 double dt = 0.1;
 
 // This value assumes the model presented in the classroom is used.
@@ -145,8 +145,11 @@ private:
 //
 // MPC class definition implementation.
 //
-vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
-  bool ok = true;
+vector<double> MPC::Solve(Eigen::VectorXd state,
+                          Eigen::VectorXd coeffs,
+                          std::vector<double>& coords_x,
+                          std::vector<double>& coords_y,
+                          bool& success) {
   typedef CPPAD_TESTVECTOR(double) Dvector;
 
   double x = state[0];
@@ -242,9 +245,9 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // magnitude.
   options += "Sparse  true        forward\n";
   options += "Sparse  true        reverse\n";
-  // NOTE: Currently the solver has a maximum time limit of 0.5 seconds.
+  // NOTE: Currently the solver has a maximum time limit of 0.9 seconds.
   // Change this as you see fit.
-  options += "Numeric max_cpu_time          0.5\n";
+  options += "Numeric max_cpu_time          0.9\n";
 
   // place to return solution
   CppAD::ipopt::solve_result<Dvector> solution;
@@ -254,20 +257,22 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
       options, vars, vars_lowerbound, vars_upperbound, constraints_lowerbound,
       constraints_upperbound, fg_eval, solution);
 
+
   // Check some of the solution values
-  ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
+  success = (solution.status == CppAD::ipopt::solve_result<Dvector>::success);
 
   // Cost
   auto cost = solution.obj_value;
   std::cout << "Cost " << cost << std::endl;
 
-  // TODO: Return the first actuator values. The variables can be accessed with
-  // `solution.x[i]`.
-  //
-  // {...} is shorthand for creating a vector, so auto x1 = {1.0,2.0}
-  // creates a 2 element double vector.
-  return {solution.x[x_start + 1],   solution.x[y_start + 1],
-          solution.x[psi_start + 1], solution.x[v_start + 1],
-          solution.x[cte_start + 1], solution.x[epsi_start + 1],
-          solution.x[delta_start],   solution.x[a_start]};
+  // Make sure vectors are large enough already
+  coords_x.resize(N);
+  coords_y.resize(N); 
+  for (int t = 0; t < N; t++) {
+        coords_x[t] = solution.x[x_start + t];
+        coords_y[t] = solution.x[y_start + t];
+  }
+
+  // Return the first actuator values.
+  return {solution.x[delta_start], solution.x[a_start]};
 }

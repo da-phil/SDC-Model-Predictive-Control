@@ -22,7 +22,11 @@ class MPC {
 
   // Solve the model given an initial state and polynomial coefficients.
   // Return the first actuatotions.
-  vector<double> Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs);
+  vector<double> Solve(Eigen::VectorXd state,
+											 Eigen::VectorXd coeffs,
+											 std::vector<double>& coords_x,
+											 std::vector<double>& coords_y,
+											 bool& success);
 
  private:
   const double max_steer_rad;
