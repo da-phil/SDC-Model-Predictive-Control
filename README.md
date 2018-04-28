@@ -1,7 +1,52 @@
-# CarND-Controls-MPC
-Self-Driving Car Engineer Nanodegree Program
+# Model Predictive Control project
 
----
+## Introduction
+
+In this project the goal was to apply model predictive control (MPC) to control a car around a race track, essentially controlling the steering and throttle. In MPC the control problem is modeled as an optimization problem using the kinematics or dynamics model of the car as contraints for the kinematics parameters and physical limits such as maximum steering angle and acceleration/deceleration as bounds for our control input parameters steering and throttle.
+
+The following screenshot of the simulator shows the MPC path displayed in green and the reference path in yellow:
+
+[Picture]
+
+## Setup - Dataflow with simulator
+### Outputs from simulator
+A simulator provides the following state variables as telemetry messages:
+* X and Y Position of the car in a global map coordinate system
+* Heading / yaw angle
+* Lateral velocity 
+* A list of waypoints in X and Y in a global map coordinate system
+
+By fitting a polynomial to the given waypoints we get a function that resembles the curve of the road ahead.
+Usually a 3rd degree polynomial can be a good estimate of most road curves. Before fitting the waypoints to the polynomial function we have to transform the global map coordinates into the local vehicle coordinate frame.
+
+### Inputs to simulator
+* List of reference trajectory waypoints in vehicle coordinate frame for visualization
+* List of predicted waypoints by MPC in vehicle coordinate frame for visualization
+* Control inputs: steering angle in rad [-25°, +25°], throttle [-1, +1]
+
+## Model
+For this project a Constant Turn Rate and Velocity (CTRV) vehicle model is assumed, that means our system states include:
+* Position X and Y in an global map coordinate system
+* Heading / yaw angle
+* Lateral velocity 
+* Cross track error (CTE)
+* Orientation Error
+
+Different trajectories are calculated over the prediction horizon by the optimizer, the horizon is the duration over which future predictions are made. We’ll refer to this as time `T`.
+* `T` is the product of two other variables, `N` and `dt`.
+* `N` is the number of timesteps in the horizon.
+* `dt`  is how much time elapses between actuations.
+
+For example, if `N` were `20` and `dt` were `0.5`, then `T` would be `10` seconds.
+`N` and `dt` are hyperparameters which need to be tuned. More about this later. But in general `T` should be as large as possible, while `dt` should be as small as possible.
+
+The trajectory with the lowest cost will be chosen by the optimizer, that means that the cost function has to be designed carefully.
+
+
+
+
+
+
 
 ## Dependencies
 
