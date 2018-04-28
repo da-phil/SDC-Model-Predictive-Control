@@ -30,7 +30,7 @@ const double latency_s = 0.07; // estimated latency in seconds for future state 
 const double Lf = 2.67;
 
 // Reference velocity
-const double ref_v = 110.0;
+const double ref_v = 120.0;
 
 
 
@@ -38,7 +38,7 @@ int main() {
   uWS::Hub h;
 
   // MPC is initialized here!
-  MPC mpc(ref_v, Lf, 0.436332, -0.6, 1.0, 500.);
+  MPC mpc(ref_v, Lf, 0.15, -0.6, 1.0, 100.);
 
   // save steering angle and throttle values in case optimizer failed
   double steer_value = 0.0;
@@ -67,15 +67,6 @@ int main() {
           double cte, epsi;
           bool success = false;
 
-          // Predicting offset to initial state
-          // by taking actuation delays into account
-          if  (latency_s > 0.0) {
-            px    += v * cos(psi) * latency_s;
-            py    += v * sin(psi) * latency_s;
-            v     += throttle_value * latency_s;
-            psi    = fmod(psi + v * steer_value / Lf * latency_s, 2*M_PI);
-          }
-
           //Display the waypoints/reference line
           vector<double> next_x_vals(N_ref);
           vector<double> next_y_vals(N_ref);
@@ -102,7 +93,7 @@ int main() {
           // current CTE is fitted polynomial (road curve), evaluated at px = 0.0
           cte = coeffs[0];
 
-          // current heading error epsi is the tangent (derivative) to the road curve,
+          // Current heading error epsi is the tangent (derivative) to the road curve,
           // also evaluated at px = 0.0.
           // f = ax^3 + bx + c --> f'(x)=2ax+b --> f'(0)=b
           // y(x)   = a*x^3 + b*x^2 + c*x + d --->  y'(x) = 3*a*x^2 + 2*b*x + c
@@ -112,11 +103,15 @@ int main() {
 
           // In initial state for trajectory planning x, y, and psi are always 0!
           px = py = psi = 0.0;
-
-          // Also take offset into account for cte and epsi in intial state for MPC optimizer
+          // Predicting offset to initial state
+          // by taking actuation delays into account
           if  (latency_s > 0.0) {
-            cte    += v * sin(epsi) * latency_s;
-            epsi   += v * steer_value / Lf * latency_s;
+            px    += v * cos(-psi) * latency_s;
+            py    += v * sin(-psi) * latency_s;
+            psi    = fmod(psi + v * steer_value / Lf * latency_s, 2*M_PI);
+            cte   += v * sin(epsi) * latency_s;
+            epsi  += v * steer_value / Lf * latency_s;
+            v     += throttle_value * latency_s;
           }
 
           Eigen::VectorXd state(6);
