@@ -6,7 +6,27 @@
 #include <vector>
 #include <Eigen/Core>
 
+#include "tools.hpp"
+
+
 using namespace std;
+using CppAD::AD;
+
+class FG_eval {
+	public:
+		typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
+
+		FG_eval(Eigen::VectorXd coeffs, const double steering_smoothness = 500) :
+		    coeffs(coeffs), steering_smoothness(steering_smoothness) { }
+
+		void operator()(ADvector& fg, const ADvector& vars);
+
+	private:
+	  // Fitted polynomial coefficients
+	  Eigen::VectorXd coeffs;
+	  double steering_smoothness;
+	  Moving_Average<double, double, 20> avg_radius;
+};
 
 
 class MPC {
@@ -32,8 +52,7 @@ class MPC {
   const double max_steer_rad;
   const double min_accel;
   const double max_accel;
-  const double steering_smoothness;
-
+  double steering_smoothness;
 };
 
 #endif /* MPC_H */
