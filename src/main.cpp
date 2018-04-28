@@ -13,20 +13,36 @@
 // for convenience
 using json = nlohmann::json;
 
-const int N_ref = 12; // number of reference points for reference trajectory
+const int N_ref = 15; // number of points for reference trajectory
 const double wp_delta = 5.0; // delta between waypoints in x direction
 const double latency_s = 0.07; // estimated latency in seconds for future state prediction
+
+// This value assumes the model presented in the classroom is used.
+//
+// It was obtained by measuring the radius formed by running the vehicle in the
+// simulator around in a circle with a constant steering angle and velocity on a
+// flat terrain.
+//
+// Lf was tuned until the the radius formed by the simulating the model
+// presented in the classroom matched the previous radius.
+//
+// This is the length from front to CoG that has a similar radius.
 const double Lf = 2.67;
+
+// Reference velocity
+const double ref_v = 110.0;
+
+
 
 int main() {
   uWS::Hub h;
 
   // MPC is initialized here!
-  MPC mpc(0.436332, -0.6, 1.0, 500.);
+  MPC mpc(ref_v, Lf, 0.436332, -0.6, 1.0, 500.);
 
   // save steering angle and throttle values in case optimizer failed
   double steer_value = 0.0;
-  double throttle_value = 0.0;
+  double throttle_value = 1.0;
 
   h.onMessage([&mpc, &steer_value, &throttle_value](uWS::WebSocket<uWS::SERVER> ws,
                                                     char *data, size_t length, uWS::OpCode opCode) {
@@ -49,25 +65,15 @@ int main() {
           double psi              = j[1]["psi"];
           double v                = j[1]["speed"];
           double cte, epsi;
-          double delta_px, delta_py, delta_v, delta_psi, delta_cte, delta_epsi;
           bool success = false;
 
           // Predicting offset to initial state
           // by taking actuation delays into account
           if  (latency_s > 0.0) {
-            delta_px    = v * cos(psi) * latency_s;
-            delta_py    = v * sin(psi) * latency_s;
-            delta_v     = throttle_value * latency_s;
-            delta_psi   = v * steer_value / Lf * latency_s;  
-            px          += delta_px;
-            py          += delta_py;
-            v           += delta_v;
-            psi         += delta_psi;            
-          } else {
-            delta_px    = 0.0;
-            delta_py    = 0.0;
-            delta_v     = 0.0;
-            delta_psi   = 0.0;
+            px    += v * cos(psi) * latency_s;
+            py    += v * sin(psi) * latency_s;
+            v     += throttle_value * latency_s;
+            psi    = fmod(psi + v * steer_value / Lf * latency_s, 2*M_PI);
           }
 
           //Display the waypoints/reference line
@@ -88,7 +94,7 @@ int main() {
           auto coeffs = polyfit(wp_x, wp_y, 3);
 
           for (int x = 0; x < (int) next_x_vals.size(); x++) {
-            next_x_vals[x] = wp_delta*x + delta_px;
+            next_x_vals[x] = wp_delta*x;
             next_y_vals[x] = polyeval(coeffs, next_x_vals[x]);
           }
 
@@ -109,10 +115,8 @@ int main() {
 
           // Also take offset into account for cte and epsi in intial state for MPC optimizer
           if  (latency_s > 0.0) {
-            delta_cte   = v * sin(epsi) * latency_s;
-            delta_epsi  = v * steer_value / Lf * latency_s;
-            cte    += delta_cte;
-            epsi   += delta_epsi;
+            cte    += v * sin(epsi) * latency_s;
+            epsi   += v * steer_value / Lf * latency_s;
           }
 
           Eigen::VectorXd state(6);
