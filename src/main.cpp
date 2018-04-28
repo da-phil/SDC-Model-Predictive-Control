@@ -14,25 +14,26 @@
 using json = nlohmann::json;
 
 const int N_ref = 12; // number of reference points for reference trajectory
-const double wp_delta = 6.0; // delta between waypoints in x direction
-const double latency_s = 0.01; // latency in seconds
+const double wp_delta = 5.0; // delta between waypoints in x direction
+const double latency_s = 0.07; // estimated latency in seconds for future state prediction
 const double Lf = 2.67;
 
 int main() {
   uWS::Hub h;
 
   // MPC is initialized here!
-  MPC mpc(0.436332, -0.6, 1.0, 1000);
+  MPC mpc(0.436332, -0.6, 1.0, 500.);
 
   // save steering angle and throttle values in case optimizer failed
   double steer_value = 0.0;
-  double throttle_value = 0.8;
+  double throttle_value = 0.0;
 
   h.onMessage([&mpc, &steer_value, &throttle_value](uWS::WebSocket<uWS::SERVER> ws,
                                                     char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
+    std::chrono::high_resolution_clock::time_point begin = std::chrono::high_resolution_clock::now();
     string sdata = string(data).substr(0, length);
     if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') {
       string s = hasData(sdata);
@@ -47,6 +48,27 @@ int main() {
           double py               = j[1]["y"];
           double psi              = j[1]["psi"];
           double v                = j[1]["speed"];
+          double cte, epsi;
+          double delta_px, delta_py, delta_v, delta_psi, delta_cte, delta_epsi;
+          bool success = false;
+
+          // Predicting offset to initial state
+          // by taking actuation delays into account
+          if  (latency_s > 0.0) {
+            delta_px    = v * cos(psi) * latency_s;
+            delta_py    = v * sin(psi) * latency_s;
+            delta_v     = throttle_value * latency_s;
+            delta_psi   = v * steer_value / Lf * latency_s;  
+            px          += delta_px;
+            py          += delta_py;
+            v           += delta_v;
+            psi         += delta_psi;            
+          } else {
+            delta_px    = 0.0;
+            delta_py    = 0.0;
+            delta_v     = 0.0;
+            delta_psi   = 0.0;
+          }
 
           //Display the waypoints/reference line
           vector<double> next_x_vals(N_ref);
@@ -66,33 +88,31 @@ int main() {
           auto coeffs = polyfit(wp_x, wp_y, 3);
 
           for (int x = 0; x < (int) next_x_vals.size(); x++) {
-            next_x_vals[x] = wp_delta*x;
+            next_x_vals[x] = wp_delta*x + delta_px;
             next_y_vals[x] = polyeval(coeffs, next_x_vals[x]);
           }
 
-          bool success = false;
-
           // Calculate the cross-track-error
-          // current CTE is fitted polynomial (road curve) evaluated at px = 0.0
-          // f = K[3] * px0 * px0 + px0 + K[2] * px0 * px0 + K[1] * px0 + K[0];
-          double cte = coeffs[0];
+          // current CTE is fitted polynomial (road curve), evaluated at px = 0.0
+          cte = coeffs[0];
 
-          // current heading error epsi is the tangent to the road curve at px = 0.0
-          // epsi = arctan(f') where f' is the derivative of the fitted polynomial
-          // derivative of coeffs[0] + coeffs[1] * x  ... -> coeffs[1]
-          double epsi = -atan(coeffs[1]);
+          // current heading error epsi is the tangent (derivative) to the road curve,
+          // also evaluated at px = 0.0.
+          // f = ax^3 + bx + c --> f'(x)=2ax+b --> f'(0)=b
+          // y(x)   = a*x^3 + b*x^2 + c*x + d --->  y'(x) = 3*a*x^2 + 2*b*x + c
+          // coeffs = [d, c, b, a]
+          // epsi = arctan(y'(0)) = arctan(coeffs[1])
+          epsi = -atan(coeffs[1]);
 
           // In initial state for trajectory planning x, y, and psi are always 0!
-          px = 0.0;
-          py = 0.0;
-          psi = 0.0;
+          px = py = psi = 0.0;
+
+          // Also take offset into account for cte and epsi in intial state for MPC optimizer
           if  (latency_s > 0.0) {
-            px   += v * cos(psi) * latency_s;
-            py   += v * sin(psi) * latency_s;
-            psi  += v * -steer_value / Lf * latency_s;
-            cte  += v * sin(epsi) * latency_s;
-            epsi += v * -steer_value / Lf * latency_s;
-            v    += throttle_value * latency_s;
+            delta_cte   = v * sin(epsi) * latency_s;
+            delta_epsi  = v * steer_value / Lf * latency_s;
+            cte    += delta_cte;
+            epsi   += delta_epsi;
           }
 
           Eigen::VectorXd state(6);
@@ -104,13 +124,7 @@ int main() {
           // Both are in between [-1, 1].
           // But only update values if solver succeeded, otherwise keep old values!
           if (success) {
-            // Note:
-            // - If steering is positive we rotate counter-clockwise, or turn left.
-            //   In the simulator however, a positive value implies a right turn and a negative value implies a left turn.
-            //   Therefore we change directions here.
-            // - Remember to divide by deg2rad(25) before you send the steering value back.
-            //   Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-            steer_value    = -solution[0] / deg2rad(25);
+            steer_value    = solution[0];
             throttle_value = solution[1];
           } else {
             std::cout << "Optimizer failed to find solution!" << std::endl;
@@ -118,7 +132,13 @@ int main() {
 
           json msgJson;
 
-          msgJson["steering_angle"] = steer_value;
+          // Note:
+          // - If steering is positive we rotate counter-clockwise, or turn left.
+          //   In the simulator however, a positive value implies a right turn and a negative value implies a left turn.
+          //   Therefore we change directions here.
+          // - Remember to divide by deg2rad(25) before you send the steering value back.
+          //   Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
+          msgJson["steering_angle"] = -steer_value / deg2rad(25);
           msgJson["throttle"] = throttle_value;
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
@@ -143,7 +163,11 @@ int main() {
           //
           // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
           // SUBMITTING.
-          this_thread::sleep_for(chrono::milliseconds((int) (latency_s*1e3)));
+          chrono::high_resolution_clock::time_point end= chrono::high_resolution_clock::now();
+          std::cout << "elapsed seconds: " << 
+                       1e-3*chrono::duration_cast<chrono::milliseconds>(end-begin).count() << endl;
+
+          this_thread::sleep_for(chrono::milliseconds(100));
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
       } else {
