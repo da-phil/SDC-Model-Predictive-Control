@@ -2,7 +2,9 @@
 
 ## Introduction
 
-In this project the goal was to apply model predictive control (MPC) to control a car around a race track, essentially controlling the steering and throttle. In MPC the control problem is modeled as an optimization problem using the kinematics or dynamics model of the car as contraints for the kinematics parameters and physical limits such as maximum steering angle and acceleration/deceleration as bounds for our control input parameters steering and throttle.
+In this project the goal was to apply model predictive control (MPC) to control a car around a race track, essentially controlling the steering and throttle.
+In MPC the control problem is modeled as an optimization problem using the kinematics or dynamics model of the car as contraints for the kinematics parameters and physical limits such as maximum steering angle and acceleration/deceleration as bounds for our control input parameters steering and throttle. The optimizer is calculating a whole trajectory in each iteration and eventually chooses the one with the lowest cost. Every point on that trajectory consists with a vehicle kinematic state and control input / actuator values. Only the actuator value pair of the first point on the final trajectory is used as control input.
+Because the project aims to be somewhat realistic there is an actuation latency of 100ms which has to be incorporated in the trajectory prediction.
 
 The following screenshot of the simulator shows the MPC path displayed in green and the reference path in yellow:
 
@@ -29,23 +31,88 @@ For this project a Constant Turn Rate and Velocity (CTRV) vehicle model is assum
 * Position X and Y in an global map coordinate system
 * Heading / yaw angle
 * Lateral velocity 
-* Cross track error (CTE)
-* Orientation Error
+* Cross track error (`cte`) - error between desired and the actual position.
+* Orientation Error (`epsi`) - difference between our desired heading and actual heading.
+
+The cross track error and orientation error (epsi) are illustrated in the following figure:
+![](imgs/errors.png)
+
+Once we fitted a polynomial function across the reference waypoints we can use it to calculate the errors `cte` and `epsi`.
+The cross track error is caluclated by just evaluating the polynomial function at 0, whereas the heading angle error is the arctan of the derivative of the polynomial function, also evaluated at 0.
+So to summarize:
+* cte = f(0)
+* epsi = argctan(f'(0))  
+
+
+## Setting parameters
+
+### MPC parameters
 
 Different trajectories are calculated over the prediction horizon by the optimizer, the horizon is the duration over which future predictions are made. We’ll refer to this as time `T`.
 * `T` is the product of two other variables, `N` and `dt`.
 * `N` is the number of timesteps in the horizon.
-* `dt`  is how much time elapses between actuations.
+* `dt` is how much time elapses between actuations.
 
 For example, if `N` were `20` and `dt` were `0.5`, then `T` would be `10` seconds.
-`N` and `dt` are hyperparameters which need to be tuned. More about this later. But in general `T` should be as large as possible, while `dt` should be as small as possible.
+`N` and `dt` are hyperparameters which need to be tuned. But in general `T` should be as large as possible, while `dt` should be as small as possible.
+Because of the actuation latency of `0.1` I also set `dt` also to `0.1`. It makes sense because due to the delay the timing grid at which the optimizer will get invoked will be at multiples of 0.1s anyway. Predicting trajectories with time steps smaller than this delay leads to shaky behaviour.
+As for the number of timesteps `N` I stuck with the default value of 10, which just gave good results even at higher speeds like 100mph, so the prediction horizon was long enough for safe driving.
+
+### Cost function design
 
 The trajectory with the lowest cost will be chosen by the optimizer, that means that the cost function has to be designed carefully.
 
+![](imgs/mpc.png)
 
+A cost function should contain all independed control variables which are actively changed by the optimizer, they are usually squared and added up to a scalar sum.
+In my case I focussed only on penalizing steering actuations and the gaps between sequential actuations.
+Because the weight for the cross track error term should be similar it got the same weight `steering_cost_weight`.
 
+```c++
+  for (int t = 0; t < N; t++) {
+    fg[0] += steering_cost_weight * CppAD::pow(vars[cte_start + t], 2);
+    fg[0] += CppAD::pow(vars[epsi_start + t], 2);
+    fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
+  }
 
+  // Minimize the use of actuators, for all sampling points except last one (N-1).
+  for (int t = 0; t < N - 1; t++) {
+    fg[0] += steering_cost_weight * CppAD::pow(vars[delta_start + t], 2);
+    fg[0] += CppAD::pow(vars[a_start + t], 2);
+  }
 
+  // Minimize the value gap (derivative) between sequential actuations,
+  // for all sampling points except the last two (N-2).
+  for (int t = 0; t < N - 2; t++) {
+    fg[0] += steering_cost_weight * CppAD::pow((vars[delta_start + t + 1] - vars[delta_start + t]), 2);
+    fg[0] += CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
+  }
+```
+
+For determining `steering_cost_weight` I used a heuristic that says that on straight roads (low curvature, high radius) the steering penalty should be relaxed and in narrow curves (high curvature, low radius) steering should get the main focus for the optimizer by setting a high weight, see here:
+
+```c++
+  const double max_radius = 1e3;
+  // Calculate radius and catch division by zero
+  if (fabs(coeffs[2]) > std::numeric_limits<double>::epsilon()) {
+      // y(x)   = a*x^3 + b*x^2 + c*x + d
+      // y'(x)  = 3*a*x^2 + 2*b*x + c,    y''(x) = 6*a*x + 2*b
+      // coeffs = [d, c, b, a]
+      // R(x)   = ((1 + f'(x)^2)^1.5) / abs(f''(x))
+      //        = ((1 + (3*a*x^2 + 2*b*x +c)^2)^1.5 / abs(6*a*x+2*b)
+      // R(0)   = ((1 + c^2)^1.5 / abs(2*b)
+      radius = pow(1.0 + pow(coeffs[1], 2), 1.5) / fabs(2.*coeffs[2]);
+      if (radius > max_radius)
+        radius = max_radius;
+  } else {
+      radius = max_radius;
+  }
+
+  avg_radius(radius);
+  steering_cost_weight = steering_smoothness * (max_radius / avg_radius);
+```
+
+The hyper parameter `steering_smoothness` was eventually set to `200`.
 
 
 ## Dependencies
