@@ -18,7 +18,6 @@ const double wp_delta = 5.0; // delta between waypoints in x direction
 const double latency_s = 0.07; // estimated latency in seconds for future state prediction
 
 // This value assumes the model presented in the classroom is used.
-//
 // It was obtained by measuring the radius formed by running the vehicle in the
 // simulator around in a circle with a constant steering angle and velocity on a
 // flat terrain.
