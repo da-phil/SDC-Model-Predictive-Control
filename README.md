@@ -2,13 +2,17 @@
 
 ## Introduction
 
+![](imgs/animation.gif)
+
+
 In this Udacity Self-driving-car engineer nanodegree project the goal was to apply model predictive control (MPC) to control a car around a race track, essentially controlling the steering and throttle (acceleration).
 In MPC the control problem is modeled as an optimization problem using the kinematics or dynamics model of the car as contraints for the kinematics parameters and physical limits such as maximum steering angle and acceleration/deceleration as bounds for our control input parameters steering and throttle. The optimizer is calculating a whole trajectory in each iteration and eventually chooses the one with the lowest cost. Every point on that trajectory consists with a vehicle kinematic state and control input / actuator values. Only the actuator value pair of the first point on the final trajectory is used as control input.
 Because the project aims to be somewhat realistic there is an actuation latency of 100ms which has to be incorporated in the trajectory prediction.
 
 The following screenshot of the simulator shows the MPC path displayed in green and the reference path in yellow:
 
-[Picture]
+![](imgs/screenshot.png)
+
 
 ## Setup - Dataflow with simulator
 
@@ -162,8 +166,8 @@ In this project there are two places where this can be done:
 * After calculating the polynomial coefficients for the reference trajectory, just before the current state is given to the optimizer to find the next actuation values.
 
 After some testing it seems that the latter option leads to a more robust behaviour, because due to some inaccuracies in the estimated latency the reference path starts to shake and therefore also the MPC generated trajectory, which leads to severe oscillations and eventually to a crash.
-There is one thing I did not figure out though, the latency value which worked best was around 0.065s although the program enforces a delay of 0.1s and the optimizer causes another 0.02 to 0.03 seconds delay which should add up to around 0.13s which would need to be compensated.
-However compensating only for 0.065s did work best, getter lower or higher with the anticipated delay made the controller unstable.
+There is one thing I did not figure out though, the latency value which worked best was around 0.065s although the program enforces a delay of 0.1s and the optimizer causes another 0.02 to 0.03 seconds delay which should add up to around 0.13s which would need to be compensated. It even depends which detail mode you select in the simulator, a higher amount of details leads to a higher delay.
+Compensating only for 0.065s did work best graphics quality mode "good", getter lower or higher with the anticipated delay made the controller unstable. In graphics quality mode "fantastic" it seems that 0.1s work better.
 
 In the end I was able to successfully drive around the test track with `v_ref` set to 110mph and an estimated average velocity of around 80mph for half and hour, without any crashes or incidents.
 
