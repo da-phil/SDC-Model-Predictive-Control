@@ -61,7 +61,7 @@ void FG_eval::operator()(ADvector& fg, const ADvector& vars) {
   // Any additions to the cost should be added to `fg[0]`.
   fg[0] = 0;
 
-  // The part of the cost based on the reference state:
+  // The part of the cost based on the deviation from the reference state:
   // - penalize increasing CTE
   // - penalize heading error (epsi)
   // - penalize deviation from reference velocity (ref_v)
@@ -118,8 +118,10 @@ void FG_eval::operator()(ADvector& fg, const ADvector& vars) {
     AD<double> a0     = vars[a_start + t - 1];
 
     // Evaluate polynomial
-    AD<double> f0 = coeffs[0] + coeffs[1]*x0 +
-                    coeffs[2]*x0*x0 + coeffs[3]*x0*x0*x0;
+    AD<double> f0 = coeffs[0] +
+                    coeffs[1]*x0 +
+                    coeffs[2]*x0*x0 +
+                    coeffs[3]*x0*x0*x0;
     AD<double> psides0 = CppAD::atan(    coeffs[1] +
                                      2.0*coeffs[2]*x0 +
                                      3.0*coeffs[3]*x0*x0);

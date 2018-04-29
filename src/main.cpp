@@ -38,7 +38,7 @@ int main() {
   uWS::Hub h;
 
   // MPC is initialized here!
-  MPC mpc(ref_v, Lf, 0.15, -0.6, 1.0, 100.);
+  MPC mpc(ref_v, Lf, 0.1, -0.6, 1.0, 200.);
 
   // save steering angle and throttle values in case optimizer failed
   double steer_value = 0.0;
@@ -75,6 +75,7 @@ int main() {
           vector<double> mpc_y_vals;
 
           // Transform waypoints from global coordinate system into the local car coordinate system
+          // where px and py are the cars translational offset and -psi the rotational offset
           std::vector<double> waypts_x_trans;
           std::vector<double> waypts_y_trans;
           Tranform2d(waypts_x_trans, waypts_y_trans, waypts_x, waypts_y, px, py, -psi);
@@ -101,10 +102,11 @@ int main() {
           // epsi = arctan(y'(0)) = arctan(coeffs[1])
           epsi = -atan(coeffs[1]);
 
-          // In initial state for trajectory planning x, y, and psi are always 0!
+          // In initial state for trajectory planning x, y, and psi are 0
+          // because they now represent the position and orientation in 
+          // local car coordinates.
           px = py = psi = 0.0;
-          // Predicting offset to initial state
-          // by taking actuation delays into account
+          // Predicting offset to initial state by taking actuation delays into account
           if  (latency_s > 0.0) {
             px    += v * cos(-psi) * latency_s;
             py    += v * sin(-psi) * latency_s;
