@@ -2,7 +2,7 @@
 
 ## Introduction
 
-In this project the goal was to apply model predictive control (MPC) to control a car around a race track, essentially controlling the steering and throttle.
+In this Udacity Self-driving-car engineer nanodegree project the goal was to apply model predictive control (MPC) to control a car around a race track, essentially controlling the steering and throttle (acceleration).
 In MPC the control problem is modeled as an optimization problem using the kinematics or dynamics model of the car as contraints for the kinematics parameters and physical limits such as maximum steering angle and acceleration/deceleration as bounds for our control input parameters steering and throttle. The optimizer is calculating a whole trajectory in each iteration and eventually chooses the one with the lowest cost. Every point on that trajectory consists with a vehicle kinematic state and control input / actuator values. Only the actuator value pair of the first point on the final trajectory is used as control input.
 Because the project aims to be somewhat realistic there is an actuation latency of 100ms which has to be incorporated in the trajectory prediction.
 
@@ -27,10 +27,12 @@ Usually a 3rd degree polynomial can be a good estimate of most road curves. Befo
 * Control inputs: steering angle in rad [-25°, +25°], throttle [-1, +1]
 
 ## Model
-For this project a Constant Turn Rate and Velocity (CTRV) vehicle model is assumed, that means our system states include:
-* Position X and Y in an global map coordinate system
-* Heading / yaw angle
-* Lateral velocity 
+For this project a Constant Steering Angle and Velocity (CSAV) kinematic bicycle model is assumed, in which the correlation between `v` and the turn-rate `omega` can be modeled by using the steering angle as constant variable and derive the yaw rate from `v`, the steering angle and a constant `Lf` which describes the length from the front of vehicle to its center-of-gravity. 
+That means our system states consists of:
+* Position X and Y in an global map coordinate system (`px` and `py`)
+* Heading / yaw angle (`psi`)
+* Lateral velocity (`v`)
+* Yaw rate, derived from steering angle and `v` (`(v / Lf) * steer_angle`)
 * Cross track error (`cte`) - error between desired and the actual position.
 * Orientation Error (`epsi`) - difference between our desired heading and actual heading.
 
@@ -43,7 +45,16 @@ So to summarize:
 * cte = f(0)
 * epsi = argctan(f'(0))  
 
-TODO: equations!
+The following kinematics equations are used for setting up the constraints in the optimizer as well as for future state prediction to compensate actuator latency:
+
+    px1   = px0   + v0 * dt * cos(psi0)
+    py1   = py0   + v0 * dt * sin(psi0)
+    psi1  = psi0  + v0 / Lf * steer_angle * dt
+    v1    = v0    + throttle * dt
+
+* `Lf` is the length from front of vehicle to its center-of-gravity, a parameters which has been calculated and provided Udacity (`Lf = 2.67`).
+* Car acceleration `throttle` will be between -1 (full brake) and +1 (full acceleration).
+* Car steering angle `steer_angle` will be between -25° and +25°.
 
 ## Setting parameters and other challenges
 
@@ -67,7 +78,7 @@ The trajectory with the lowest cost will be chosen by the optimizer, that means 
 
 A cost function should contain all independed control variables which are actively changed by the optimizer, they are usually squared and added up to a scalar sum.
 In my case I focussed only on penalizing steering actuations and the gaps between sequential actuations.
-Because the weight for the cross track error term should be similar it got the same weight `steering_cost_weight`.
+Because the weight for the cross track error term should be in a similar range it got the same weight `steering_cost_weight`.
 
 ```c++
   for (int t = 0; t < N; t++) {
