@@ -43,8 +43,9 @@ So to summarize:
 * cte = f(0)
 * epsi = argctan(f'(0))  
 
+TODO: equations!
 
-## Setting parameters
+## Setting parameters and other challenges
 
 ### MPC parameters
 
@@ -113,6 +114,11 @@ For determining `steering_cost_weight` I used a heuristic that says that on stra
 ```
 
 The hyper parameter `steering_smoothness` was eventually set to `200`.
+
+
+### Dealing with actuator latency
+
+TODO
 
 
 ## Dependencies
