@@ -9,7 +9,8 @@ In this Udacity Self-driving-car engineer nanodegree project the goal was to app
 In MPC the control problem is modeled as an optimization problem using the kinematics or dynamics model of the car as contraints for the kinematics parameters and physical limits such as maximum steering angle and acceleration/deceleration as bounds for our control input parameters steering and throttle. The optimizer is calculating a whole trajectory in each iteration and eventually chooses the one with the lowest cost. Every point on that trajectory consists with a vehicle kinematic state and control input / actuator values. Only the actuator value pair of the first point on the final trajectory is used as control input.
 Because the project aims to be somewhat realistic there is an actuation latency of 100ms which has to be incorporated in the trajectory prediction.
 
-The following screenshot of the simulator shows the MPC path displayed in green and the reference path in yellow:
+The following screenshot of the simulator shows the MPC path displayed in green and the reference path in yellow.
+Those paths are fitted polynomials to the waypoints which appear as small spheres along the path.
 
 ![](imgs/screenshot.png)
 
