@@ -11,6 +11,9 @@ The following screenshot of the simulator shows the MPC path displayed in green 
 [Picture]
 
 ## Setup - Dataflow with simulator
+
+The data structures which are used for communication with the simulator are documented in [DATA.md](./DATA.md).
+
 ### Outputs from simulator
 A simulator provides the following state variables as telemetry messages:
 * X and Y Position of the car in a global map coordinate system
@@ -56,6 +59,12 @@ The following kinematics equations are used for setting up the constraints in th
 * Car acceleration `throttle` will be between -1 (full brake) and +1 (full acceleration).
 * Car steering angle `steer_angle` will be between -25° and +25°.
 
+We can also predict the next `cte` and `epsi` based on our actuations:
+
+    cte1  = cte0   - v0 * sin(epsi0) * dt
+    epsi1 = epsi0  + v0 / Lf * steer_angle * dt
+
+
 ## Setting parameters and other challenges
 
 ### MPC parameters
@@ -76,8 +85,15 @@ The trajectory with the lowest cost will be chosen by the optimizer, that means 
 
 ![](imgs/mpc.png)
 
-A cost function should contain all independed control variables which are actively changed by the optimizer, they are usually squared and added up to a scalar sum.
-In my case I focussed only on penalizing steering actuations and the gaps between sequential actuations.
+A cost function should contain all independed control variables which are actively changed by the optimizer.
+Those variables can be taken directly or more complicated terms can be formulated such as derivatives of those variables.
+Then a weight for each of those terms is assigned in order to able to give some terms a higher importance than others.
+Eventually those terms are squared (L2² norm) and added up to a scalar sum.
+Taking into consideration that our primary objective is to minimize `cte` and `epsi` those weights should be the highest.
+Increasing also the weights for consecutive steering angles and the change in steering angles helps getting a very smooth path.
+The least of our concerns is going as fast as possible, that's why I didn't change those weights.
+
+So in my approach I focussed only on penalizing steering actuations and the gaps between sequential actuations because it gave the best and smoothest results.
 Because the weight for the cross track error term should be in a similar range it got the same weight `steering_cost_weight`.
 
 ```c++
@@ -129,7 +145,27 @@ The hyper parameter `steering_smoothness` was eventually set to `200`.
 
 ### Dealing with actuator latency
 
-TODO
+The issue with latency in a control system like a car is that by the time the car executes the next actuator commands the state has changed from the previously calculated one already and is not reflecting the current situation anymore.
+This can lead to instability like oscillations in a control system.
+
+Dealing with actuator latency means compensating that effect by estimating the latency and modelling it the kinematic model which is used for state estimation and prediction such as given below:
+
+    px    += v * cos(psi) * latency_s
+    py    += v * sin(psi) * latency_s
+    psi   += v * steer_angle / Lf * latency_s
+    cte   += v * sin(epsi) * latency_s
+    epsi  += v * steer_angle / Lf * latency_s
+    v     += throttle * latency_s
+
+In this project there are two places where this can be done:
+* Directly when we received back the telemetry data from the simulator before calculating the polynomial function parameters (coefficients).
+* After calculating the polynomial coefficients for the reference trajectory, just before the current state is given to the optimizer to find the next actuation values.
+
+After some testing it seems that the latter option leads to a more robust behaviour, because due to some inaccuracies in the estimated latency the reference path starts to shake and therefore also the MPC generated trajectory, which leads to severe oscillations and eventually to a crash.
+There is one thing I did not figure out though, the latency value which worked best was around 0.065s although the program enforces a delay of 0.1s and the optimizer causes another 0.02 to 0.03 seconds delay which should add up to around 0.13s which would need to be compensated.
+However compensating only for 0.065s did work best, getter lower or higher with the anticipated delay made the controller unstable.
+
+In the end I was able to successfully drive around the test track with `v_ref` set to 110mph and an estimated average velocity of around 80mph for half and hour, without any crashes or incidents.
 
 
 ## Dependencies
@@ -155,7 +191,7 @@ TODO
     Some function signatures have changed in v0.14.x. See [this PR](https://github.com/udacity/CarND-MPC-Project/pull/3) for more details.
 
 * **Ipopt and CppAD:** Please refer to [this document](https://github.com/udacity/CarND-MPC-Project/blob/master/install_Ipopt_CppAD.md) for installation instructions.
-* [Eigen](http://eigen.tuxfamily.org/index.php?title=Main_Page). This is already part of the repo so you shouldn't have to worry about it.
+* [Eigen](http://eigen.tuxfamily.org/index.php?title=Main_Page).
 * Simulator. You can download these from the [releases tab](https://github.com/udacity/self-driving-car-sim/releases).
 * Not a dependency but read the [DATA.md](./DATA.md) for a description of the data sent back from the simulator.
 
